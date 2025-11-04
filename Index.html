@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Leaflet PDF Overlay Example</title>
+  <title>Leaflet PDF Overlay Dubai Example</title>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"
+  />
   <style>
     #map {
       height: 600px;
@@ -15,41 +18,44 @@
 </head>
 <body>
 
-<div id="map"></div>
+  <div id="map"></div>
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-<!-- PDF.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js"></script>
-<!-- L.GridLayer.PDFLayer plugin (from GitHub) -->
-<script src="https://unpkg.com/leaflet-pdf-layer/leaflet-pdf-layer.min.js"></script>
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js"></script>
+  <!-- L.GridLayer.PDFLayer plugin -->
+  <script src="https://unpkg.com/leaflet-pdf-layer/leaflet-pdf-layer.min.js"></script>
 
-<script>
-  // Initialize the map and set view to Dubai approximate coordinates and zoom
-  var map = L.map('map').setView([25.2048, 55.2708], 12);
+  <script>
+    // Initialize map centered on Dubai
+    var map = L.map('map').setView([25.2048, 55.2708], 12);
 
-  // Add a base tile layer (OpenStreetMap)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: 'Map data © OpenStreetMap contributors'
-  }).addTo(map);
+    // OpenStreetMap base layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
-  // Define the bounds of the PDF overlay (in latLng)
-  // These would correspond to the geographic extent of the PDF
-  var pdfBounds = [[25.0, 55.0], [25.4, 55.6]];
+    // Define geographic bounds to position the PDF overlay correctly
+    // Adjust these coordinates to match your PDF's extent
+    var pdfBounds = [
+      [25.0, 55.0], // SouthWest coordinates
+      [25.4, 55.6]  // NorthEast coordinates
+    ];
 
-  // Create the PDF overlay layer
-  var pdfUrl = 'path/to/your/dubai-area-map.pdf'; // Replace with your actual PDF URL
+    // Path to PDF in the data folder (relative to your HTML file location)
+    var pdfUrl = 'data/dubai-area-map.pdf';
 
-  var pdfLayer = new L.GridLayer.PDFLayer(pdfUrl, {
-    bounds: pdfBounds,
-    // optional: scale, opacity, etc.
-    opacity: 0.7,
-  });
+    // Create PDF layer with bounds and opacity
+    var pdfLayer = new L.GridLayer.PDFLayer(pdfUrl, {
+      bounds: pdfBounds,
+      opacity: 0.7
+    });
 
-  // Add the PDF overlay to the map
-  pdfLayer.addTo(map);
-</script>
+    // Add the PDF overlay layer to the map
+    pdfLayer.addTo(map);
+  </script>
 
 </body>
 </html>
