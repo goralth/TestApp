@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Leaflet PDF Overlay Dubai Example</title>
+  <title>Leaflet Image Overlay Dubai Map</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- Leaflet CSS -->
@@ -22,39 +22,30 @@
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-  <!-- PDF.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js"></script>
-  <!-- L.GridLayer.PDFLayer plugin -->
-  <script src="https://unpkg.com/leaflet-pdf-layer/leaflet-pdf-layer.min.js"></script>
 
   <script>
-    // Initialize map centered on Dubai
+    // Initialize the map, centered on Dubai
     var map = L.map('map').setView([25.2048, 55.2708], 12);
 
-    // OpenStreetMap base layer
+    // Add OpenStreetMap base tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Define geographic bounds to position the PDF overlay correctly
-    // Adjust these coordinates to match your PDF's extent
-    var pdfBounds = [
-      [25.0, 55.0], // SouthWest coordinates
-      [25.4, 55.6]  // NorthEast coordinates
+    // Define bounds for the image overlay [SW_lat, SW_lng], [NE_lat, NE_lng]
+    var imageBounds = [
+      [25.0, 55.0],  // Southwest corner
+      [25.4, 55.6]   // Northeast corner
     ];
 
-    // Path to PDF in the data folder (relative to your HTML file location)
-    var pdfUrl = 'Data/Dubai.pdf';
+    // Path to the PNG map image in your data folder
+    var imageUrl = 'Data/Dubai.pdf';
 
-    // Create PDF layer with bounds and opacity
-    var pdfLayer = new L.GridLayer.PDFLayer(pdfUrl, {
-      bounds: pdfBounds,
-      opacity: 0.7
-    });
+    // Add the image overlay to the map with optional opacity
+    L.imageOverlay(imageUrl, imageBounds, {opacity: 0.7}).addTo(map);
 
-    // Add the PDF overlay layer to the map
-    pdfLayer.addTo(map);
+    // Optional: fit map bounds to the image overlay bounds on load
+    map.fitBounds(imageBounds);
   </script>
 
 </body>
