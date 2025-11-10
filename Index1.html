@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dubai Areas Map with Leaflet</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map {
+      width: 100%;
+      height: 400px; /* Horizontal aspect: wider than tall */
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+  // Initialize map centered on Dubai
+  var map = L.map('map').setView([25.276987, 55.296249], 11);
+
+  // Base layer - OpenStreetMap tiles
+  var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Sample polygon for Damac Hills (example coordinates)
+  var damacHills = L.polygon([
+    [25.062, 55.231],
+    [25.061, 55.245],
+    [25.070, 55.247],
+    [25.071, 55.233]
+  ], {color: 'blue'}).bindPopup('Damac Hills');
+
+  // Sample polygon for Jumeirah Lake Towers (example coordinates)
+  var jlt = L.polygon([
+    [25.068, 55.147],
+    [25.065, 55.160],
+    [25.076, 55.162],
+    [25.078, 55.148]
+  ], {color: 'green'}).bindPopup('Jumeirah Lake Towers');
+
+  // Define base and overlay layers for the control
+  var baseMaps = {
+    "OpenStreetMap": osm
+  };
+
+  var overlayMaps = {
+    "Damac Hills": damacHills,
+    "Jumeirah Lake Towers": jlt
+  };
+
+  // Add layer control to map
+  L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+  // Optionally add default layers on load
+  // damacHills.addTo(map);
+</script>
+
+</body>
+</html>
