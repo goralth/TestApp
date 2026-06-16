@@ -1,0 +1,33 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sample Area"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [55.25, 25.25],
+            [55.35, 25.25],
+            [55.35, 25.15],
+            [55.25, 25.15],
+            [55.25, 25.25]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sample Point"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [55.27, 25.20]
+      }
+    }
+  ]
+}

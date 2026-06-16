@@ -1,0 +1,73 @@
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: Arial, sans-serif;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  height: 100vh;
+}
+
+.sidebar {
+  padding: 18px;
+  border-right: 1px solid #ddd;
+  background: #fff;
+  overflow-y: auto;
+}
+
+.sidebar h2 {
+  margin-top: 0;
+  color: #134e9b;
+}
+
+.layer-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: flex-start;
+}
+
+.layer-item input {
+  margin-top: 2px;
+}
+
+.btn {
+  margin-top: 14px;
+  margin-right: 8px;
+  padding: 8px 12px;
+  border: 0;
+  background: #134e9b;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.panel {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.panel h3 {
+  margin: 0 0 8px 0;
+  color: #134e9b;
+}
+
+.small {
+  color: #555;
+  font-size: 13px;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  padding: 10px;
+  border-radius: 6px;
+}

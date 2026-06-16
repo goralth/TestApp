@@ -1,0 +1,157 @@
+# app.py
+# pip install flask folium pandas numpy shapely plotly
+
+from flask import Flask, render_template_string
+import pandas as pd
+import numpy as np
+import folium
+from shapely.geometry import Point
+import json
+import plotly.express as px
+import plotly.utils
+
+app = Flask(__name__)
+
+# 1) Sample flood points around Bangalore
+def generate_flood_points(n=80):
+    np.random.seed(42)
+    lat = np.random.normal(12.97, 0.02, n)
+    lon = np.random.normal(77.59, 0.02, n)
+    flood_risk = np.random.choice(
+        ['Low', 'Medium', 'High'],
+        size=n,
+        p=[0.2, 0.3, 0.5]
+    )
+    df = pd.DataFrame({
+        'lat': lat,
+        'lon': lon,
+        'flood_risk': flood_risk
+    })
+    return df
+
+# 2) Convert each point to a circular polygon (buffer) in degrees
+def points_to_polygons(df, buffer_deg=0.005):
+    polys = []
+    for _, row in df.iterrows():
+        pt = Point(row['lon'], row['lat'])   # shapely uses (x=lon, y=lat)
+        poly = pt.buffer(buffer_deg, resolution=16)
+        polys.append(poly)
+    df_poly = df.copy()
+    df_poly['geometry'] = polys
+    return df_poly
+
+@app.route("/")
+def index():
+    # Data
+    df_pts = generate_flood_points()
+    df_poly = points_to_polygons(df_pts, buffer_deg=0.005)
+
+    # 3) Flood risk pie chart (ONE chart)
+    risk_counts = df_pts['flood_risk'].value_counts().reset_index()
+    risk_counts.columns = ['flood_risk', 'count']
+    fig = px.pie(
+        risk_counts,
+        names='flood_risk',
+        values='count',
+        title='Flood Risk Distribution'
+    )
+    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+    # 4) Folium map with polygons as flooded zones
+    m = folium.Map(location=[12.97, 77.59], zoom_start=12)
+
+    # Add polygons
+    for _, row in df_poly.iterrows():
+        poly = row['geometry']
+        # shapely coords: (x=lon, y=lat) -> folium: (lat, lon)
+        coords = [(lat, lon) for lon, lat in poly.exterior.coords]
+
+        if row['flood_risk'] == 'High':
+            color = 'red'
+        elif row['flood_risk'] == 'Medium':
+            color = 'orange'
+        else:
+            color = 'yellow'
+
+        folium.Polygon(
+            locations=coords,
+            color=color,
+            weight=1,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.5,
+            popup=f"Flooded zone<br>Risk: {row['flood_risk']}"
+        ).add_to(m)
+
+    # Optionally also show point centers
+    for _, row in df_pts.iterrows():
+        folium.CircleMarker(
+            location=[row['lat'], row['lon']],
+            radius=3,
+            color='blue',
+            fill=True,
+            fill_opacity=0.9
+        ).add_to(m)
+
+    map_html = m._repr_html_()
+
+    # 5) HTML template: one chart + map
+    template = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Flood Risk Zones</title>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+            .top { display: flex; flex-direction: row; padding: 10px; }
+            #chart { width: 40%; height: 400px; }
+            #stats { width: 20%; padding: 10px; }
+            #map { width: 100%; height: 60vh; }
+            .map-wrapper { padding: 10px; }
+        </style>
+    </head>
+    <body>
+        <div class="top">
+            <div id="chart"></div>
+            <div id="stats">
+                <h3>Summary</h3>
+                <p>Total points: {{ total_points }}</p>
+                <p>High risk: {{ high_count }}</p>
+                <p>Medium risk: {{ med_count }}</p>
+                <p>Low risk: {{ low_count }}</p>
+            </div>
+        </div>
+
+        <div class="map-wrapper">
+            <h3 style="padding-left:10px;">Flooded Zones (Polygons)</h3>
+            <div id="map">
+                {{ map_html|safe }}
+            </div>
+        </div>
+
+        <script>
+            var graph = {{ graphJSON | safe }};
+            Plotly.newPlot('chart', graph.data, graph.layout || {});
+        </script>
+    </body>
+    </html>
+    """
+
+    # counts for summary
+    high_count = int((df_pts['flood_risk'] == 'High').sum())
+    med_count = int((df_pts['flood_risk'] == 'Medium').sum())
+    low_count = int((df_pts['flood_risk'] == 'Low').sum())
+
+    return render_template_string(
+        template,
+        graphJSON=graphJSON,
+        map_html=map_html,
+        total_points=len(df_pts),
+        high_count=high_count,
+        med_count=med_count,
+        low_count=low_count
+    )
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)

@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>ArcGIS Dashboard Demo</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.30/"></script>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; }
+    .app-shell { display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
+    .sidebar { padding: 18px; border-right: 1px solid #ddd; background: #fff; overflow-y: auto; }
+    .sidebar h2 { color: #2f6fb2; font-size: 20px; font-weight: 500; margin-bottom: 14px; }
+    .btn { margin-top: 14px; margin-right: 8px; padding: 8px 12px; border: 0; background: #134e9b; color: #fff; border-radius: 6px; cursor: pointer; }
+    #viewDiv { width: 100%; height: 100vh; }
+    #chartWrap { margin-top: 16px; height: 320px; }
+    #schoolChart { width: 100%; height: 100%; display: block; }
+    .accordion-item { border-left: 2px solid #d9d9d9; margin-top: 12px; margin-bottom: 12px; padding-left: 10px; }
+    .accordion-header { width: 100%; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; font-size: 14px; font-weight: 700; cursor: pointer; padding: 4px 0; text-align: left; }
+    .arrow { transition: transform 0.2s ease; }
+    .accordion-item.open .arrow { transform: rotate(180deg); }
+    .accordion-body { display: none; padding: 8px 0 0 22px; }
+    .accordion-item.open .accordion-body { display: block; }
+    .accordion-body label { display: block; margin-bottom: 8px; font-size: 14px; }
+    .los-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+    .seg { border: 1px solid #c9c9c9; background: #f2f2f2; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+    .seg.active { background: #2f6fb2; color: #fff; border-color: #2f6fb2; }
+    #countyDropdownContainer { margin-top: 10px; }
+    #countySelect { width: 100%; padding: 6px; }
+    #statusMsg { margin-top: 10px; font-size: 12px; color: #b00020; min-height: 16px; white-space: pre-line; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <h2>Layers & Filters</h2>
+
+      <div class="accordion-item" id="mobilityAccordion">
+        <button class="accordion-header" type="button" aria-expanded="false">
+          <span class="arrow">▼</span>
+          <span>MULTIMODAL MOBILITY</span>
+        </button>
+        <div class="accordion-body">
+          <div class="los-row">
+            <label style="margin-bottom:0;"><input type="checkbox" id="los"> LOS</label>
+            <button type="button" class="seg active" id="btnAM">AM</button>
+            <button type="button" class="seg" id="btnPM">PM</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion-item" id="infrastructurecondition">
+        <button class="accordion-header" type="button" aria-expanded="false">
+          <span class="arrow">▼</span>
+          <span>INFRASTRUCTURE CONDITION</span>
+        </button>
+        <div class="accordion-body">
+          <label style="margin-bottom:0;"><input type="checkbox" id="bridge"> Bridge</label>
+        </div>
+      </div>
+
+      <div class="accordion-item" id="finalAccordion">
+        <button class="accordion-header" type="button" aria-expanded="false">
+          <span class="arrow">▼</span>
+          <span>AccessToEducation</span>
+        </button>
+        <div class="accordion-body">
+          <label style="margin-bottom:0;"><input type="checkbox" id="accessToEducation"> Access_to_education</label>
+          <div id="countyDropdownContainer" style="display:none;">
+            <select id="countySelect">
+              <option value="">Select Precinct</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="chartWrap">
+        <canvas id="schoolChart"></canvas>
+      </div>
+      <div id="statusMsg"></div>
+      <button class="btn" id="resetBtn">Reset View</button>
+    </aside>
+
+    <div id="viewDiv"></div>
+  </div>
+
+  <script>
+    const categoryColors = {
+      "ATHLETIC FACILITIY": "#4e79a7",
+      "DAYCARE": "#f28e2b",
+      "ADMINSTRATIVE": "#e15759",
+      "POST SECONDARY": "#76b7b2",
+      "PRIMARY": "#59a14f",
+      "SECONDARY": "#edc948",
+      "MULTI": "#b07aa1",
+      "INTERMEDIATE": "#ff9da7"
+    };
+
+    const fallbackSelectedZoneFill = [0, 0, 255, 0.18];
+
+    let chartInstance = null;
+    let educationRows = [];
+    let currentCounty = '';
+    let countyLayer = null;
+    let accessLayer = null;
+    let bridgeLayer = null;
+    let losLayer = null;
+    let selectedPrecinctLayer = null;
+    let currentLOSField = 'AM_VC';
+    let view = null;
+    let map = null;
+
+    let selectedZoneValue = null;
+    let selectedZoneField = null;
+    let selectedZoneColor = fallbackSelectedZoneFill;
+
+    function setStatus(msg) {
+      document.getElementById('statusMsg').textContent = msg || '';
+    }
+
+    function parseNumber(v) {
+      const n = Number(String(v ?? '').replace(/,/g, '').trim());
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function normalizeFieldName(name) {
+      return String(name || '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '');
+    }
+
+    function getAttr(attrs, candidates) {
+      if (!attrs) return undefined;
+      const keys = Object.keys(attrs);
+      for (const candidate of candidates) {
+        const wanted = normalizeFieldName(candidate);
+        const found = keys.find(k => normalizeFieldName(k) === wanted);
+        if (found) return attrs[found];
+      }
+      return undefined;
+    }
+
+    function getZoneCategoryData(attrs) {
+      return {
+        "ATHLETIC FACILITIY": parseNumber(getAttr(attrs, ["ATHLETIC FACILITIY", "ATHLETIC_FACILITIY", "ATHLETICFACILITIY", "ATHLETIC FACILITY", "ATHLETIC_FACILITY"])),
+        "DAYCARE": parseNumber(getAttr(attrs, ["DAYCARE"])),
+        "ADMINSTRATIVE": parseNumber(getAttr(attrs, ["ADMINSTRATIVE", "ADMINISTRATIVE"])),
+        "POST SECONDARY": parseNumber(getAttr(attrs, ["POST SECONDARY", "POST_SECONDARY", "POSTSECONDARY"])),
+        "PRIMARY": parseNumber(getAttr(attrs, ["PRIMARY"])),
+        "SECONDARY": parseNumber(getAttr(attrs, ["SECONDARY"])),
+        "MULTI": parseNumber(getAttr(attrs, ["MULTI"])),
+        "INTERMEDIATE": parseNumber(getAttr(attrs, ["INTERMEDIA"]))
+      };
+    }
+
+    function getHighestCategory(categoryData) {
+      let bestCategory = null;
+      let bestValue = -Infinity;
+
+      Object.entries(categoryData).forEach(([key, value]) => {
+        if (value > bestValue) {
+          bestValue = value;
+          bestCategory = key;
+        }
+      });
+
+      if (!bestCategory) return { category: null, value: 0 };
+      return { category: bestCategory, value: bestValue };
+    }
+
+    function updateSidebarChart(labels, values, titleText, legendColor = '#4e79a7') {
+      const barColors = labels.map(label => categoryColors[label] || '#999999');
+      const ctx = document.getElementById('schoolChart').getContext('2d');
+
+      if (!chartInstance) {
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: titleText,
+              data: values,
+              backgroundColor: barColors,
+              borderColor: legendColor,
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+              legend: {
+                display: true,
+                labels: {
+                  usePointStyle: false
+                }
+              },
+              title: { display: false }
+            },
+            scales: {
+              x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 45 } },
+              y: { beginAtZero: true }
+            }
+          }
+        });
+      } else {
+        chartInstance.data.labels = labels;
+        chartInstance.data.datasets = [{
+          label: titleText,
+          data: values,
+          backgroundColor: barColors,
+          borderColor: legendColor,
+          borderWidth: 1
+        }];
+        chartInstance.update('none');
+      }
+    }
+
+    function renderBarChart(data, countyName = '') {
+      if (!data || !data.length) {
+        setStatus('No education data found for the selected county.');
+        if (chartInstance) {
+          chartInstance.destroy();
+          chartInstance = null;
+        }
+        return;
+      }
+
+      const rawKeys = Object.keys(data[0] || {});
+      const labelKey = rawKeys.includes('REPNAME1') ? 'REPNAME1' : rawKeys[0];
+      const seriesKeys = rawKeys.filter(k => k !== labelKey);
+      const labels = data.map(d => d[labelKey]).filter(Boolean);
+
+      if (!labels.length || !seriesKeys.length) {
+        setStatus('CSV headers do not match expected chart columns.');
+        return;
+      }
+
+      const datasets = seriesKeys.map(key => ({
+        label: key,
+        data: data.map(d => parseNumber(d[key])),
+        backgroundColor: categoryColors[key] || '#999999'
+      }));
+
+      const ctx = document.getElementById('schoolChart').getContext('2d');
+
+      if (!chartInstance) {
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+              x: { stacked: false, ticks: { autoSkip: false, maxRotation: 45, minRotation: 45 } },
+              y: { beginAtZero: true }
+            },
+            plugins: {
+              legend: { position: 'top' },
+              title: {
+                display: true,
+                text: countyName ? `Access to Education - ${countyName}` : 'Access to Education'
+              }
+            }
+          }
+        });
+      } else {
+        chartInstance.data.labels = labels;
+        chartInstance.data.datasets = datasets;
+        chartInstance.options.plugins.title.text = countyName ? `Access to Education - ${countyName}` : 'Access to Education';
+        chartInstance.update('none');
+      }
+
+      setStatus('');
+    }
+
+    async function loadEducationChart() {
+      try {
+        const res = await fetch('./data/Education.csv', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+        educationRows = (parsed.data || []).filter(row => Object.values(row).some(v => String(v ?? '').trim() !== ''));
+        renderBarChart(educationRows);
+      } catch (err) {
+        console.error(err);
+        setStatus('Could not load Education.csv. Check path and run from a web server, not file://.');
+      }
+    }
+
+    function updateChartForCounty(countyName) {
+      currentCounty = countyName || '';
+      if (!educationRows.length) return;
+
+      if (!currentCounty) {
+        renderBarChart(educationRows);
+        return;
+      }
+
+      const filtered = educationRows.filter(row => {
+        const rowCounty = String(row.REPNAME1 || row.COUNTY || row.county || '').trim();
+        return rowCounty === currentCounty;
+      });
+
+      renderBarChart(filtered, currentCounty);
+    }
+
+    function updateChartForZone(zoneName, attrs) {
+      const categoryData = getZoneCategoryData(attrs);
+      const labels = Object.keys(categoryData);
+      const values = Object.values(categoryData);
+      const barColors = labels.map(label => categoryColors[label] || '#999999');
+
+      const maxValue = Math.max(...values);
+
+      const topCategories = maxValue > 0
+        ? labels.filter(label => Number(categoryData[label]) === maxValue)
+        : [];
+
+      const ctx = document.getElementById('schoolChart').getContext('2d');
+
+      const config = {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: '',
+            data: values,
+            backgroundColor: barColors
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: {
+            legend: {
+              display: topCategories.length > 0,
+              labels: {
+                generateLabels() {
+                  if (!topCategories.length) return [];
+
+                  return topCategories.map(category => ({
+                    text: category,
+                    fillStyle: categoryColors[category] || '#999999',
+                    strokeStyle: categoryColors[category] || '#999999',
+                    lineWidth: 1,
+                    hidden: false,
+                    datasetIndex: 0
+                  }));
+                }
+              }
+            },
+            title: {
+              display: true,
+              text: `School Categories - ${zoneName}`
+            }
+          },
+          scales: {
+            x: {
+              ticks: { autoSkip: false, maxRotation: 45, minRotation: 45 }
+            },
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      };
+
+      if (!chartInstance) {
+        chartInstance = new Chart(ctx, config);
+      } else {
+        chartInstance.data.labels = config.data.labels;
+        chartInstance.data.datasets = config.data.datasets;
+        chartInstance.options.plugins.legend.display = config.options.plugins.legend.display;
+        chartInstance.options.plugins.legend.labels.generateLabels = config.options.plugins.legend.labels.generateLabels;
+        chartInstance.options.plugins.title.text = config.options.plugins.title.text;
+        chartInstance.update('none');
+      }
+    }
+    function clearZoneSelection() {
+      selectedZoneValue = null;
+      selectedZoneField = null;
+      selectedZoneColor = fallbackSelectedZoneFill;
+    }
+
+    function getZoneOutlineSymbol(fillColor) {
+      return {
+        type: "simple-fill",
+        color: fillColor,
+        outline: { color: "#0000ff", width: 2 }
+      };
+    }
+
+    function getSelectedZoneRenderer() {
+      if (!selectedZoneField || selectedZoneValue == null) {
+        return {
+          type: "simple",
+          symbol: getZoneOutlineSymbol([0, 0, 0, 0])
+        };
+      }
+
+      return {
+        type: "unique-value",
+        field: selectedZoneField,
+        defaultSymbol: getZoneOutlineSymbol([0, 0, 0, 0]),
+        uniqueValueInfos: [{
+          value: selectedZoneValue,
+          symbol: getZoneOutlineSymbol(selectedZoneColor),
+          label: "Selected zone"
+        }]
+      };
+    }
+
+    async function loadCountyDropdown() {
+      if (!countyLayer) return;
+      await countyLayer.load();
+      const query = countyLayer.createQuery();
+      query.where = '1=1';
+      query.outFields = ['REPNAME1'];
+      query.returnGeometry = false;
+      const result = await countyLayer.queryFeatures(query);
+      const uniqueNames = [...new Set(result.features.map(f => f.attributes.REPNAME1).filter(Boolean))].sort();
+      const countySelect = document.getElementById('countySelect');
+      countySelect.innerHTML = '<option value="">Select Precinct</option>';
+      uniqueNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        countySelect.appendChild(option);
+      });
+    }
+
+    async function zoomToCountyByName(repname) {
+      if (!countyLayer || !repname || !view) return;
+      await countyLayer.load();
+      const query = countyLayer.createQuery();
+      query.where = `REPNAME1 = '${repname.replace(/'/g, "''")}'`;
+      query.returnGeometry = true;
+      query.outFields = ['REPNAME1'];
+      const result = await countyLayer.queryFeatures(query);
+      if (result.features.length > 0) {
+        const geom = result.features[0].geometry;
+        await view.goTo(geom.extent ? geom.extent.expand(0.8) : geom);
+      }
+    }
+
+    require(['esri/Map', 'esri/views/MapView', 'esri/layers/GeoJSONLayer'], function (Map, MapView, GeoJSONLayer) {
+      function getLOSRenderer(fieldName) {
+        return {
+          type: 'class-breaks',
+          field: fieldName,
+          defaultSymbol: { type: 'simple-line', color: '#999999', width: 1.5 },
+          defaultLabel: 'No data',
+          classBreakInfos: [
+            { minValue: -9999, maxValue: 0.4, symbol: { type: 'simple-line', color: '#000000', width: 2.5 }, label: '< 0.4' },
+            { minValue: 0.4, maxValue: 0.6, symbol: { type: 'simple-line', color: '#00C5FF', width: 3 }, label: '0.4 - 0.6' },
+            { minValue: 0.6, maxValue: 0.8, symbol: { type: 'simple-line', color: '#FFAA00', width: 3.5 }, label: '0.6 - 0.8' },
+            { minValue: 0.8, maxValue: 9999, symbol: { type: 'simple-line', color: '#E60000', width: 4 }, label: '> 0.8' }
+          ]
+        };
+      }
+
+      function getBridgeRenderer() {
+        return {
+          type: 'unique-value',
+          field: 'rating',
+          defaultSymbol: { type: 'simple-marker', color: '#CCCCCC', outline: { color: '#000000', width: 1 }, size: 6 },
+          defaultLabel: 'No Score',
+          uniqueValueInfos: [
+            { value: '3', symbol: { type: 'simple-marker', color: '#FF0000', outline: { color: '#730000', width: 1 }, size: 8 }, label: 'Poor (3)' },
+            { value: '4', symbol: { type: 'simple-marker', color: '#FF0000', outline: { color: '#730000', width: 1 }, size: 8 }, label: 'Poor (4)' }
+          ]
+        };
+      }
+
+      function getAccessRenderer() {
+        return {
+          type: 'unique-value',
+          field: 'CATEGORY',
+          defaultSymbol: { type: 'simple-marker', color: '#cccccc', outline: { color: '#666666', width: 1 }, size: 6 },
+          uniqueValueInfos: Object.keys(categoryColors)
+            .filter(key => !key.startsWith('__'))
+            .map(key => ({
+              value: key,
+              label: key,
+              symbol: { type: 'simple-marker', color: categoryColors[key], outline: { color: '#ffffff', width: 1 }, size: 8 }
+            }))
+        };
+      }
+
+      function getSelectedPeriod() {
+        const activeBtn = document.querySelector('.seg.active');
+        return activeBtn ? activeBtn.textContent.trim() : 'AM';
+      }
+
+      const initialCenter = [-95.477, 30.40];
+      const initialZoom = 9;
+
+      countyLayer = new GeoJSONLayer({
+        url: './data/CountyDistrict_Commissioner_2742505522634505986.geojson',
+        title: 'County District Commissioner',
+        opacity: 0.8
+      });
+
+      map = new Map({ basemap: 'gray-vector', layers: [countyLayer] });
+      view = new MapView({
+        container: 'viewDiv',
+        map: map,
+        center: initialCenter,
+        zoom: initialZoom,
+        padding: { bottom: 35 }
+      });
+
+      async function loadSelectedPrecinctLayer(precinctName) {
+        if (!map) return;
+
+        if (selectedPrecinctLayer) {
+          map.remove(selectedPrecinctLayer);
+          selectedPrecinctLayer = null;
+        }
+
+        clearZoneSelection();
+
+        if (!precinctName) return;
+
+        const safeName = precinctName.trim().replace(/\s+/g, '');
+        const geojsonUrl = `./data/${safeName}.geojson`;
+
+        selectedPrecinctLayer = new GeoJSONLayer({
+          url: geojsonUrl,
+          title: `Selected Precinct - ${precinctName}`,
+          opacity: 1,
+          outFields: ['*'],
+          popupEnabled: false,
+          renderer: {
+            type: "simple",
+            symbol: getZoneOutlineSymbol([0, 0, 0, 0])
+          }
+        });
+
+        await selectedPrecinctLayer.load();
+
+        const layerFields = selectedPrecinctLayer.fields || [];
+        const preferredIdField =
+          layerFields.find(f => ['OBJECTID', 'ObjectID', 'ZONE_ID', 'ZONEID', 'ID', 'FID'].includes(f.name)) ||
+          layerFields.find(f => /OBJECTID|ZONEID|ZONE_ID|^ID$|^FID$/i.test(f.name)) ||
+          layerFields[0];
+
+        selectedZoneField = preferredIdField ? preferredIdField.name : 'NAME';
+        selectedPrecinctLayer.renderer = getSelectedZoneRenderer();
+
+        map.add(selectedPrecinctLayer);
+        map.reorder(selectedPrecinctLayer, map.layers.length - 1);
+      }
+
+      async function ensureAccessLayer() {
+        if (!accessLayer) {
+          accessLayer = new GeoJSONLayer({
+            url: './data/Access_to_education.geojson',
+            title: 'Access_to_education',
+            renderer: getAccessRenderer()
+          });
+          map.add(accessLayer);
+          await accessLayer.load();
+        }
+        return accessLayer;
+      }
+
+      async function ensureBridgeLayer() {
+        if (!bridgeLayer) {
+          bridgeLayer = new GeoJSONLayer({
+            url: './data/output/cleaned_geojson.geojson',
+            title: 'Bridge Layer',
+            renderer: getBridgeRenderer()
+          });
+          map.add(bridgeLayer);
+          await bridgeLayer.load();
+        }
+        return bridgeLayer;
+      }
+
+      async function ensureLosLayer() {
+        if (!losLayer) {
+          losLayer = new GeoJSONLayer({
+            url: './data/HGAC_net2026_Clipped.geojson',
+            title: 'LOS Layer',
+            renderer: getLOSRenderer(currentLOSField)
+          });
+          map.add(losLayer);
+          await losLayer.load();
+        }
+        return losLayer;
+      }
+
+      document.getElementById('los').addEventListener('change', async function (e) {
+        try {
+          if (e.target.checked) {
+            await ensureLosLayer();
+            losLayer.visible = true;
+          } else if (losLayer) {
+            losLayer.visible = false;
+          }
+        } catch (err) {
+          console.error(err);
+          setStatus('LOS layer failed to load.');
+        }
+      });
+
+      document.getElementById('bridge').addEventListener('change', async function (e) {
+        try {
+          if (e.target.checked) {
+            await ensureBridgeLayer();
+            bridgeLayer.visible = true;
+          } else if (bridgeLayer) {
+            bridgeLayer.visible = false;
+          }
+        } catch (err) {
+          console.error(err);
+          setStatus('Bridge layer failed to load.');
+        }
+      });
+
+      document.getElementById('accessToEducation').addEventListener('change', async function (e) {
+        try {
+          const countyDropdownContainer = document.getElementById('countyDropdownContainer');
+
+          if (e.target.checked) {
+            countyDropdownContainer.style.display = 'block';
+            await ensureAccessLayer();
+            accessLayer.visible = true;
+            await loadCountyDropdown();
+            await loadEducationChart();
+
+            const selectedPrecinct = document.getElementById('countySelect').value;
+            if (selectedPrecinct) {
+              await loadSelectedPrecinctLayer(selectedPrecinct);
+              updateChartForCounty(selectedPrecinct);
+            } else {
+              updateChartForCounty('');
+            }
+          } else {
+            countyDropdownContainer.style.display = 'none';
+            if (accessLayer) accessLayer.visible = false;
+            currentCounty = '';
+            educationRows = [];
+            clearZoneSelection();
+
+            if (chartInstance) {
+              chartInstance.destroy();
+              chartInstance = null;
+            }
+
+            if (selectedPrecinctLayer) {
+              map.remove(selectedPrecinctLayer);
+              selectedPrecinctLayer = null;
+            }
+
+            setStatus('');
+          }
+        } catch (err) {
+          console.error(err);
+          setStatus('Access to education layer failed to load.');
+        }
+      });
+
+      document.getElementById('countySelect').addEventListener('change', async function () {
+        const countyName = this.value;
+        await zoomToCountyByName(countyName);
+        await loadSelectedPrecinctLayer(countyName);
+        updateChartForCounty(countyName);
+        setStatus(countyName ? `Showing precinct summary for ${countyName}. Click a zone to see zone-level school categories.` : '');
+      });
+
+      view.on("click", async function(event) {
+        try {
+          if (!selectedPrecinctLayer || !document.getElementById('accessToEducation').checked) return;
+
+          const hit = await view.hitTest(event);
+          const zoneHit = hit.results.find(r => r.graphic && r.graphic.layer === selectedPrecinctLayer);
+
+          if (!zoneHit) return;
+
+          const graphic = zoneHit.graphic;
+          const attrs = graphic.attributes || {};
+          const zoneName = getAttr(attrs, ['NAME', 'ZONE', 'ZONENAME', 'ZONE_NAME', 'AREA_NAME','taz5217']) || 'Selected Zone';
+
+          const categoryData = getZoneCategoryData(attrs);
+          const highest = getHighestCategory(categoryData);
+          const highestColor = categoryColors[highest.category] || fallbackSelectedZoneFill;
+
+          if (highest.value > 0 && selectedZoneField && attrs[selectedZoneField] != null) {
+            selectedZoneValue = attrs[selectedZoneField];
+            selectedZoneColor = highestColor;
+          } else {
+            selectedZoneValue = null;
+            selectedZoneColor = fallbackSelectedZoneFill;
+          }
+
+          selectedPrecinctLayer.renderer = getSelectedZoneRenderer();
+          updateChartForZone(zoneName, attrs);
+          setStatus(
+            `${currentCounty ? 'Precinct: ' + currentCounty + '\n' : ''}` +
+            `Zone: ${zoneName}\n` +
+            `Highest category: ${highest.category || 'N/A'} (${highest.value ?? 0})`
+          );
+        } catch (err) {
+          console.error(err);
+          setStatus('Zone click failed.');
+        }
+      });
+
+      document.querySelectorAll('.seg').forEach(btn => {
+        btn.addEventListener('click', function () {
+          document.querySelectorAll('.seg').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          currentLOSField = getSelectedPeriod() === 'AM' ? 'AM_VC' : 'PM_VC';
+          if (losLayer) losLayer.renderer = getLOSRenderer(currentLOSField);
+        });
+      });
+
+      document.getElementById('resetBtn').addEventListener('click', function () {
+        view.goTo({ center: initialCenter, zoom: initialZoom });
+        clearZoneSelection();
+        if (selectedPrecinctLayer) {
+          selectedPrecinctLayer.renderer = {
+            type: "simple",
+            symbol: getZoneOutlineSymbol([0, 0, 0, 0])
+          };
+        }
+
+        if (currentCounty) {
+          updateChartForCounty(currentCounty);
+          setStatus(`Showing precinct summary for ${currentCounty}. Click a zone to see zone-level school categories.`);
+        } else {
+          setStatus('');
+        }
+      });
+
+      document.querySelectorAll('.accordion-header').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const item = btn.parentElement;
+          const isOpen = item.classList.toggle('open');
+          btn.setAttribute('aria-expanded', isOpen);
+        });
+      });
+    });
+  </script>
+</body>
+</html>

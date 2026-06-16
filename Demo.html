@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Montgomery County Mobility Hub</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.30/"></script>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; background: #f5f7fb; }
+    .topbar { height: 86px; background: #fff; border-bottom: 1px solid #ddd; display: flex; align-items: center; padding: 0 18px; gap: 24px; box-sizing: border-box; position: sticky; top: 0; z-index: 1000; }
+    .brand { font-size: 18px; font-weight: 700; color: #1f4e79; white-space: nowrap; }
+    .nav-links { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .nav-btn { border: 0; background: transparent; color: #666; font-size: 15px; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+    .nav-btn.active { background: #dce8fb; color: #184f9c; font-weight: 700; }
+    .nav-btn.right { background: #0f56a6; color: #fff; font-weight: 700; }
+    .nav-btn.outline { background: #fff; color: #333; border: 1px solid #ccc; font-weight: 600; }
+    .spacer { flex: 1; }
+    .page { display: none; height: calc(100vh - 86px); }
+    .page.active { display: block; }
+    .home-shell { display: grid; grid-template-columns: 340px 1fr 340px; gap: 16px; padding: 16px; box-sizing: border-box; height: 100%; }
+    .panel { background: #fff; border: 1px solid #d8dbe3; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden; min-height: 0; }
+    .panel-inner { padding: 18px; height: 100%; box-sizing: border-box; overflow: auto; }
+    .panel h3 { margin: 0 0 12px 0; color: #1f4e79; }
+    .overview-map { height: 100%; min-height: 0; position: relative; display:flex; flex-direction:column; }
+    #homeMap { width: 100%; flex: 1 1 auto; min-height: 0; border-radius: 0 0 14px 14px; }
+    .side-card { border: 1px solid #d9d9d9; border-radius: 8px; padding: 12px; margin-bottom: 10px; background: #fff; }
+    .side-card strong { display: block; margin-bottom: 4px; color: #2c4f75; }
+    .data-shell { height: 100%; padding: 16px; box-sizing: border-box; }
+    .explorer-frame { width: 100%; height: calc(100vh - 86px - 32px); border: 1px solid #d8dbe3; border-radius: 12px; background: #fff; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Montgomery County Mobility Hub</div>
+    <div class="nav-links">
+      <button class="nav-btn active" id="homeNav">Home</button>
+      <button class="nav-btn" id="dataExplorerNav">Data Explorer</button>
+      <button class="nav-btn">Scenarios & Performance</button>
+      <button class="nav-btn">Mobility Tool Box</button>
+      <button class="nav-btn">Implementation Plan</button>
+      <button class="nav-btn">Precinct Portals</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="nav-btn outline">Methodology</button>
+    <button class="nav-btn right">Export Data</button>
+  </header>
+  <main>
+    <section id="homePage" class="page active">
+      <div class="home-shell">
+        <div class="panel"><div class="panel-inner">
+          <h3>Executive Summary</h3>
+          <p>The goal of the Montgomery County Mobility Plan is to examine the County's transportation network holistically.</p>
+          <p>Serving as the final deliverable to H-GAC and the County, this Mobility Hub encompasses all underlying data, scenario analysis results, and final projects.</p>
+          <hr>
+          <h4>A Need-Based Approach</h4>
+          <p>The plan's methodology relies on two intertwined prongs:</p>
+          <ul>
+            <li><strong>Vision-Guided:</strong> Incorporating public and stakeholder inputs.</li>
+            <li><strong>Data-Driven:</strong> Leveraging quantitative data to analyze system performance.</li>
+          </ul>
+        </div></div>
+        <div class="panel overview-map">
+          <div class="panel-inner" style="padding-bottom:0;"><h3>Countywide Overview</h3></div>
+          <div id="homeMap"></div>
+        </div>
+        <div class="panel"><div class="panel-inner">
+          <h3>Vision & Goals</h3>
+          <p>The plan's objectives are defined and tracked across six core performance areas.</p>
+          <hr>
+          <div class="side-card"><strong>Mobility</strong>Efficiently move people and goods.</div>
+          <div class="side-card"><strong>Safety</strong>Protect all users by reducing fatalities and crash risk.</div>
+          <div class="side-card"><strong>Social Access</strong>Support multi-modal access and well-being.</div>
+          <div class="side-card"><strong>Environmental</strong>Protect natural resources and air quality.</div>
+          <div class="side-card"><strong>Infrastructure</strong>Ensure condition and resilience of assets.</div>
+          <div class="side-card"><strong>Economic Vitality</strong>Support productivity and freight movement.</div>
+        </div></div>
+      </div>
+    </section>
+    <section id="dataExplorerPage" class="page">
+      <div class="data-shell">
+        <iframe id="explorerFrame" class="explorer-frame" src="about:blank" title="Data Explorer"></iframe>
+      </div>
+    </section>
+  </main>
+  <script>
+    require(["esri/Map","esri/views/MapView","esri/layers/GeoJSONLayer"], function (Map, MapView, GeoJSONLayer) {
+      const homeMap = new Map({ basemap: "gray-vector" });
+      const view = new MapView({ container: "homeMap", map: homeMap, center: [-95.477, 30.40], zoom: 9, padding: { top: 0, left: 0, right: 0, bottom: 40 } });
+      homeMap.add(new GeoJSONLayer({ url: "./data/CountyDistrict_Commissioner_2742505522634505986.geojson", title: "County District Commissioner", opacity: 0.75 }));
+      let explorerLoaded = false;
+      function showPage(pageId) {
+        document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+        document.getElementById(pageId).classList.add("active");
+        document.getElementById("homeNav").classList.toggle("active", pageId === "homePage");
+        document.getElementById("dataExplorerNav").classList.toggle("active", pageId === "dataExplorerPage");
+        setTimeout(() => view.resize(), 0);
+      }
+      function loadExplorerPage() {
+        const frame = document.getElementById("explorerFrame");
+        if (!explorerLoaded) { frame.src = "./ARCGISDashboard.html"; explorerLoaded = true; }
+      }
+      document.getElementById("homeNav").addEventListener("click", () => showPage("homePage"));
+      document.getElementById("dataExplorerNav").addEventListener("click", () => { showPage("dataExplorerPage"); loadExplorerPage(); });
+    });
+  </script>
+</body>
+</html>
